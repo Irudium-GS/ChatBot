@@ -1,9 +1,19 @@
 const chatBody = document.querySelector(".chatbot-body");
 const messageInput = document.querySelector(".message-input");
 const sendMessageBtn = document.querySelector("#send-message");
+const fileInput = document.querySelector("#file-input");
+const fileUploadWrapper = document.querySelector("#file-upload-wrapper");
+
+// API setup
+const API_KEY = "AIzaSyAYUsu8bJJ3XkRMbyegLYSGUCEQAsNTx2I";
+const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
 
 const userData = {
-    message : null
+    message : null,
+    file: {
+        data: null,
+        mime_type: null
+    }
 }
 //Create message element with dynamic classes and return it
 const createMessageElement = (content, ...classes) => {
@@ -13,6 +23,40 @@ const createMessageElement = (content, ...classes) => {
     return div;
 }
 
+// Generate bot response using API
+const generateBotResponse = async (ingoingMessageDiv) => {
+    const messageElement = ingoingMessageDiv.querySelector(".message-text");
+// API request options
+    const requestOptions = {
+        method: "POSt",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            contents: [{
+                parts:[{text: userData.message}, ...(userData.file.data ? [{ inline_data: userData.file }] : [])]
+                }]
+        })
+    }
+    try{
+        // Fetch bot response form API
+        const response = await fetch(API_URL, requestOptions);
+        const data = await response.json();
+        if(!response.ok) throw new Error(data.error.message);
+        
+        // Extract and display bot's response text
+        const apiResponseText = data.candidates[0].content.parts[0].text.replace(/\*\*(.*?)\*\*/g, "$1").trim();
+        messageElement.innerText = apiResponseText;
+    } catch(error){
+        // Handle error in API response
+        console.log(error);
+        messageElement.innerText = error.message;
+        messageElement.style.color = "#ff0000";
+    } finally{
+        // Reset user's file data removing thinking indicator and scroll chat to bottom
+        userData.file = {};
+        ingoingMessageDiv.classList.remove("thinking");
+        chatBody.scrollTo({ top: chatBody.scrollHeight, behavior: "smooth"});
+    }
+}
 // Handle outgoing user message
 const handleOutgoingMessage = (e) => {
     e.preventDefault();
@@ -20,11 +64,14 @@ const handleOutgoingMessage = (e) => {
     messageInput.value = "";
 
     // Create and display user message
-    const messageContent =`<div class="message-text"></div>`;
+    const messageContent =`<div class="message-text"></div>
+        ${userData.file.data ? `<img src="data:${userData.file.mime_type};base64, 
+        ${userData.file.data}" class="attachment" />`: ""}`;
 
     const outgoingMessageDiv = createMessageElement(messageContent, "user-message");
     outgoingMessageDiv.querySelector(".message-text").textContent = userData.message;
     chatBody.appendChild(outgoingMessageDiv);
+    chatBody.scrollTo({ top: chatBody.scrollHeight, behavior: "smooth"});
 
     // Simulate bot response with thinking indicator after a dalay
     setTimeout(() => {
@@ -50,6 +97,8 @@ const handleOutgoingMessage = (e) => {
 
     const ingoingMessageDiv = createMessageElement(messageContent, "bot-message", "thinking");
     chatBody.appendChild(ingoingMessageDiv);
+    chatBody.scrollTo({ top: chatBody.scrollHeight, behavior: "smooth"});
+    generateBotResponse(ingoingMessageDiv);
     }, 600);
 }
 
@@ -62,6 +111,28 @@ messageInput.addEventListener("keydown", (e) => {
     }
 });
 
+// Handle file input change and preview the selected file
+fileInput.addEventListener("change", () => {
+    const file = fileInput.files[0];
+    if(!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        fileUploadWrapper.querySelector("img").src = e.target.result;
+        fileUploadWrapper.classList.add("file-uploaded");
+        
+        const base64String = e.target.result.split(",")[1];
+
+         // Store file data in userData
+        userData.file ={
+            data: base64String,
+            mime_type: file.type
+        }
+        fileInput.value ="";
+    }
+    reader.readAsDataURL(file);
+});
 
 sendMessageBtn.addEventListener("click", (e) => handleOutgoingMessage(e))
 
+document.querySelector("#file-upload").addEventListener("click", () => fileInput.click());
